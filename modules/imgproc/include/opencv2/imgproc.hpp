@@ -2165,11 +2165,11 @@ centers without finding the radius.
 
 @sa fitEllipse, minEnclosingCircle
  */
-CV_EXPORTS_W void HoughCircles( InputArray image, OutputArray circles,
+CV_EXPORTS_W void HoughCircles(InputArray image, OutputArray circles,
                                int method, double dp, double minDist,
                                double param1 = 100, double param2 = 100,
                                int minRadius = 0, int maxRadius = 0,
-                               Mat edges = Mat() );
+                               Mat edges = Mat(), Mat dx = Mat(), Mat dy = Mat());
 
 //! @} imgproc_feature
 

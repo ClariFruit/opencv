@@ -1559,13 +1559,13 @@ inline int HoughCircleEstimateRadiusInvoker<NZPointSet>::filterCircles(const Poi
 static void HoughCirclesGradient(InputArray _image, OutputArray _circles, float dp, float minDist,
                                  int minRadius, int maxRadius, int cannyThreshold,
                                  int accThreshold, int maxCircles, int kernelSize, bool centersOnly,
-                                 Mat _edges)
+                                 Mat _edges, Mat _dx, Mat _dy)
 {
     CV_Assert(kernelSize == -1 || kernelSize == 3 || kernelSize == 5 || kernelSize == 7);
     dp = max(dp, 1.f);
     float idp = 1.f/dp;
 
-    Mat edges = _edges;
+    Mat edges = _edges, dx = _dx, dy = _dy;
     if(!edges.empty())
     {
         CV_Assert(_image.cols() == edges.cols && _image.rows() == edges.rows);
@@ -1660,7 +1660,8 @@ static void HoughCircles( InputArray _image, OutputArray _circles,
                           int method, double dp, double minDist,
                           double param1, double param2,
                           int minRadius, int maxRadius,
-                          int maxCircles, double param3, Mat edges )
+                          int maxCircles, double param3,
+                          Mat edges = Mat(), Mat dx = Mat(), Mat dy = Mat())
 {
     CV_INSTRUMENT_REGION()
 
@@ -1689,7 +1690,7 @@ static void HoughCircles( InputArray _image, OutputArray _circles,
     case CV_HOUGH_GRADIENT:
         HoughCirclesGradient(_image, _circles, (float)dp, (float)minDist,
                              minRadius, maxRadius, cannyThresh,
-                             accThresh, maxCircles, kernelSize, centersOnly, edges);
+                             accThresh, maxCircles, kernelSize, centersOnly, edges, dx, dy);
         break;
     default:
         CV_Error( Error::StsBadArg, "Unrecognized method id. Actually only CV_HOUGH_GRADIENT is supported." );
@@ -1699,9 +1700,10 @@ static void HoughCircles( InputArray _image, OutputArray _circles,
 void HoughCircles( InputArray _image, OutputArray _circles,
                    int method, double dp, double minDist,
                    double param1, double param2,
-                   int minRadius, int maxRadius )
+                   int minRadius, int maxRadius,
+                   Mat edges, Mat dx, Mat dy)
 {
-    HoughCircles(_image, _circles, method, dp, minDist, param1, param2, minRadius, maxRadius, -1, 3);
+    HoughCircles(_image, _circles, method, dp, minDist, param1, param2, minRadius, maxRadius, -1, 3, edges, dx, dy);
 }
 } // \namespace cv
 
