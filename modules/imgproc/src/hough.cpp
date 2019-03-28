@@ -1558,17 +1558,25 @@ inline int HoughCircleEstimateRadiusInvoker<NZPointSet>::filterCircles(const Poi
 
 static void HoughCirclesGradient(InputArray _image, OutputArray _circles, float dp, float minDist,
                                  int minRadius, int maxRadius, int cannyThreshold,
-                                 int accThreshold, int maxCircles, int kernelSize, bool centersOnly)
+                                 int accThreshold, int maxCircles, int kernelSize, bool centersOnly,
+                                 Mat _edges)
 {
     CV_Assert(kernelSize == -1 || kernelSize == 3 || kernelSize == 5 || kernelSize == 7);
     dp = max(dp, 1.f);
     float idp = 1.f/dp;
 
-    Mat edges, dx, dy;
-
-    Sobel(_image, dx, CV_16S, 1, 0, kernelSize, 1, 0, BORDER_REPLICATE);
-    Sobel(_image, dy, CV_16S, 0, 1, kernelSize, 1, 0, BORDER_REPLICATE);
-    Canny(dx, dy, edges, std::max(1, cannyThreshold / 2), cannyThreshold, false);
+    Mat edges = _edges;
+    if(!edges.empty())
+    {
+        CV_Assert(_image.cols() == edges.cols && _image.rows() == edges.rows);
+    }
+    else
+    {
+        Mat dx, dy;
+        Sobel(_image, dx, CV_16S, 1, 0, kernelSize, 1, 0, BORDER_REPLICATE);
+        Sobel(_image, dy, CV_16S, 0, 1, kernelSize, 1, 0, BORDER_REPLICATE);
+        Canny(dx, dy, edges, std::max(1, cannyThreshold / 2), cannyThreshold, false);
+    }
 
     Mutex mtx;
     int numThreads = std::max(1, getNumThreads());
@@ -1652,7 +1660,7 @@ static void HoughCircles( InputArray _image, OutputArray _circles,
                           int method, double dp, double minDist,
                           double param1, double param2,
                           int minRadius, int maxRadius,
-                          int maxCircles, double param3 )
+                          int maxCircles, double param3, Mat edges )
 {
     CV_INSTRUMENT_REGION()
 
@@ -1681,7 +1689,7 @@ static void HoughCircles( InputArray _image, OutputArray _circles,
     case CV_HOUGH_GRADIENT:
         HoughCirclesGradient(_image, _circles, (float)dp, (float)minDist,
                              minRadius, maxRadius, cannyThresh,
-                             accThresh, maxCircles, kernelSize, centersOnly);
+                             accThresh, maxCircles, kernelSize, centersOnly, edges);
         break;
     default:
         CV_Error( Error::StsBadArg, "Unrecognized method id. Actually only CV_HOUGH_GRADIENT is supported." );
