@@ -1572,7 +1572,6 @@ static void HoughCirclesGradient(InputArray _image, OutputArray _circles, float 
     }
     else
     {
-        Mat dx, dy;
         Sobel(_image, dx, CV_16S, 1, 0, kernelSize, 1, 0, BORDER_REPLICATE);
         Sobel(_image, dy, CV_16S, 0, 1, kernelSize, 1, 0, BORDER_REPLICATE);
         Canny(dx, dy, edges, std::max(1, cannyThreshold / 2), cannyThreshold, false);
