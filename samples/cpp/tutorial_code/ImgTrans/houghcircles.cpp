@@ -43,16 +43,6 @@ int main(int argc, char** argv)
     //![reduce_noise]
     medianBlur(gray, gray, 5);
     //![reduce_noise]
-
-    //![custom edges]
-    Mat edges, dx, dy;
-    int kernelSize = 1;
-    int cannyThreshold = 50;
-    Sobel(gray, dx, CV_16S, 1, 0, kernelSize, 1, 0, BORDER_REPLICATE);
-    Sobel(gray, dy, CV_16S, 0, 1, kernelSize, 1, 0, BORDER_REPLICATE);
-    Canny(dx, dy, edges, std::max(1, cannyThreshold / 2), cannyThreshold, false);
-    //![custom edges]
-
     bool returnSupports = true;
 
     //![houghcircles]
@@ -60,7 +50,7 @@ int main(int argc, char** argv)
     HoughCircles(gray, circles, HOUGH_GRADIENT, 1,
                  gray.rows/16,  // change this value to detect circles with different distances to each other
                  100, 30, 1, 30, // change min_radius & max_radius to detect larger circles
-                 edges, dx, dy, // custom edges and gradients
+                 gray, // custom edge source
                  returnSupports
     );
     //![houghcircles]
