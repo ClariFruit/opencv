@@ -1042,14 +1042,14 @@ public:
     {
     }
 
-    void insert(const Point& pt)
+    void insert(const Point& pt, const uchar weight = 1)
     {
-        positions(pt) = 1;
+        positions(pt) = weight;
     }
 
     void insert(const NZPointSet& from)
     {
-        cv::bitwise_or(from.positions, positions, positions);
+        positions += from.positions;
     }
 
     void toList(NZPointList& list) const
@@ -1161,7 +1161,7 @@ _next_step:
                     continue;
 
                 Point pt = Point(x % edges.cols, y + x / edges.cols);
-                nzLocal.insert(pt);
+                nzLocal.insert(pt, edgeData[x]);
 
                 sx = cvRound((vx * idp) * 1024 / mag);
                 sy = cvRound((vy * idp) * 1024 / mag);
@@ -1352,8 +1352,8 @@ public:
 
     ~HoughCircleEstimateRadiusInvoker() {_lock.unlock();}
 
-protected:
-    inline int filterCircles(const Point2f& curCenter, float* ddata) const;
+//protected:
+    inline int filterCircles(const Point2f& curCenter, float* ddata, float* weightData) const;
 
     void operator()(const Range &boundaries) const
     {
@@ -1361,9 +1361,10 @@ protected:
         const int nBinsPerDr = 10;
         int nBins = cvRound((maxRadius - minRadius)/dr*nBinsPerDr);
         AutoBuffer<int> bins(nBins);
-        AutoBuffer<float> distBuf(nzSz), distSqrtBuf(nzSz);
+        AutoBuffer<float> distBuf(nzSz), distSqrtBuf(nzSz), weightsBuf(nzSz);
         float *ddata = distBuf;
         float *dSqrtData = distSqrtBuf;
+        float *weightsData = weightsBuf;
 
         bool singleThread = (boundaries == Range(0, centerSz));
         int i = boundaries.start;
@@ -1378,7 +1379,7 @@ protected:
 
             //Calculate circle's center in pixels
             Point2f curCenter = Point2f((x + 0.5f) * dr, (y + 0.5f) * dr);
-            int nzCount = filterCircles(curCenter, ddata);
+            int nzCount = filterCircles(curCenter, ddata, weightsData);
 
             int maxCount = 0;
             float rBest = 0;
@@ -1386,13 +1387,15 @@ protected:
             {
                 Mat_<float> distMat(1, nzCount, ddata);
                 Mat_<float> distSqrtMat(1, nzCount, dSqrtData);
+                Mat_<float> weightsMat(1, nzCount, weightsData);
+
                 sqrt(distMat, distSqrtMat);
 
                 memset(bins, 0, sizeof(bins[0])*bins.size());
                 for(int k = 0; k < nzCount; k++)
                 {
                     int bin = std::max(0, std::min(nBins-1, cvRound((dSqrtData[k] - minRadius)/dr*nBinsPerDr)));
-                    bins[bin]++;
+                    bins[bin] += weightsData[k];
                 }
 
                 for(int j = nBins - 1; j > 0; j--)
@@ -1454,7 +1457,7 @@ private:
 };
 
 template<>
-inline int HoughCircleEstimateRadiusInvoker<NZPointList>::filterCircles(const Point2f& curCenter, float* ddata) const
+inline int HoughCircleEstimateRadiusInvoker<NZPointList>::filterCircles(const Point2f& curCenter, float* ddata, float* weightData) const
 {
     int nzCount = 0;
     const Point* nz_ = &nz[0];
@@ -1503,6 +1506,7 @@ inline int HoughCircleEstimateRadiusInvoker<NZPointList>::filterCircles(const Po
 
         if(minRadius2 <= _r2 && _r2 <= maxRadius2)
         {
+            weightData[nzCount] = 1;
             ddata[nzCount++] = _r2;
         }
     }
@@ -1510,7 +1514,8 @@ inline int HoughCircleEstimateRadiusInvoker<NZPointList>::filterCircles(const Po
 }
 
 template<>
-inline int HoughCircleEstimateRadiusInvoker<NZPointSet>::filterCircles(const Point2f& curCenter, float* ddata) const
+inline int HoughCircleEstimateRadiusInvoker<NZPointSet>::filterCircles(
+        const Point2f& curCenter, float* ddata, float* weightData) const
 {
     int nzCount = 0;
     const Mat_<uchar>& positions = nz.positions;
@@ -1535,31 +1540,31 @@ inline int HoughCircleEstimateRadiusInvoker<NZPointSet>::filterCircles(const Poi
 
         int x = xOuter.start;
 #if CV_SIMD128
-        {
-            const v_float32x4 v_dy2 = v_setall_f32(dy2);
-            const v_uint32x4 v_zero_u32 = v_setall_u32(0);
-            float CV_DECL_ALIGNED(16) rbuf[4];
-            for (; x <= xOuter.end - 4; x += numSIMDPoints)
-            {
-                v_uint32x4 v_mask = v_load_expand_q(ptr + x);
-                v_mask = v_mask != v_zero_u32;
+//        {
+//            const v_float32x4 v_dy2 = v_setall_f32(dy2);
+//            const v_uint32x4 v_zero_u32 = v_setall_u32(0);
+//            float CV_DECL_ALIGNED(16) rbuf[4];
+//            for (; x <= xOuter.end - 4; x += numSIMDPoints)
+//            {
+//                v_uint32x4 v_mask = v_load_expand_q(ptr + x);
+//                v_mask = v_mask != v_zero_u32;
 
-                v_float32x4 v_x = v_cvt_f32(v_setall_s32(x));
-                v_float32x4 v_dx = v_x - v_curCenterX_0123;
+//                v_float32x4 v_x = v_cvt_f32(v_setall_s32(x));
+//                v_float32x4 v_dx = v_x - v_curCenterX_0123;
 
-                v_float32x4 v_r2 = (v_dx * v_dx) + v_dy2;
-                v_float32x4 vmask = (v_minRadius2 <= v_r2) & (v_r2 <= v_maxRadius2) & v_reinterpret_as_f32(v_mask);
-                unsigned int mask = v_signmask(vmask);
-                if (mask)
-                {
-                    v_store_aligned(rbuf, v_r2);
-                    if (mask & 1) ddata[nzCount++] = rbuf[0];
-                    if (mask & 2) ddata[nzCount++] = rbuf[1];
-                    if (mask & 4) ddata[nzCount++] = rbuf[2];
-                    if (mask & 8) ddata[nzCount++] = rbuf[3];
-                }
-            }
-        }
+//                v_float32x4 v_r2 = (v_dx * v_dx) + v_dy2;
+//                v_float32x4 vmask = (v_minRadius2 <= v_r2) & (v_r2 <= v_maxRadius2) & v_reinterpret_as_f32(v_mask);
+//                unsigned int mask = v_signmask(vmask);
+//                if (mask)
+//                {
+//                    v_store_aligned(rbuf, v_r2);
+//                    if (mask & 1) ddata[nzCount++] = rbuf[0];
+//                    if (mask & 2) ddata[nzCount++] = rbuf[1];
+//                    if (mask & 4) ddata[nzCount++] = rbuf[2];
+//                    if (mask & 8) ddata[nzCount++] = rbuf[3];
+//                }
+//            }
+//        }
 #endif
         for (; x < xOuter.end; x++)
         {
@@ -1569,6 +1574,7 @@ inline int HoughCircleEstimateRadiusInvoker<NZPointSet>::filterCircles(const Poi
                 float _r2 = _dx * _dx + dy2;
                 if(minRadius2 <= _r2 && _r2 <= maxRadius2)
                 {
+                    weightData[nzCount] = ptr[x];
                     ddata[nzCount++] = _r2;
                 }
             }
@@ -1580,30 +1586,29 @@ inline int HoughCircleEstimateRadiusInvoker<NZPointSet>::filterCircles(const Poi
 static void HoughCirclesGradient(InputArray _image, OutputArray _circles, float dp, float minDist,
                                  int minRadius, int maxRadius, int cannyThreshold,
                                  int accThreshold, int maxCircles, int kernelSize, bool centersOnly,
-                                 Mat edgeSource, bool returnSupports)
+                                 Mat _edges, Mat _dx, Mat _dy, bool returnSupports)
 {
     CV_Assert(kernelSize == -1 || kernelSize == 3 || kernelSize == 5 || kernelSize == 7);
     dp = max(dp, 1.f);
     float idp = 1.f/dp;
 
-    Mat edges, dx, dy;
-    if(!edgeSource.empty())
+    Mat edges = _edges, dx = _dx, dy = _dy;
+    if(!edges.empty())
     {
-        CV_Assert(_image.cols() == edgeSource.cols && _image.rows() == edgeSource.rows);
+        CV_Assert(_image.cols() == edges.cols && _image.rows() == edges.rows);
     }
     else
     {
-        edgeSource = _image.getMat();
+        Sobel(_image, dx, CV_16S, 1, 0, kernelSize, 1, 0, BORDER_REPLICATE);
+        Sobel(_image, dy, CV_16S, 0, 1, kernelSize, 1, 0, BORDER_REPLICATE);
+        Canny(dx, dy, edges, std::max(1, cannyThreshold / 2), cannyThreshold, false);
     }
-
-    Sobel(edgeSource, dx, CV_16S, 1, 0, kernelSize, 1, 0, BORDER_REPLICATE);
-    Sobel(edgeSource, dy, CV_16S, 0, 1, kernelSize, 1, 0, BORDER_REPLICATE);
-    Canny(dx, dy, edges, std::max(1, cannyThreshold / 2), cannyThreshold, false);
 
     Mutex mtx;
     int numThreads = std::max(1, getNumThreads());
     std::vector<Mat> accumVec;
     NZPointSet nz(_image.rows(), _image.cols());
+
     parallel_for_(Range(0, edges.rows),
                   HoughCirclesAccumInvoker(edges, dx, dy, minRadius, maxRadius, idp, accumVec, nz, mtx),
                   numThreads);
@@ -1620,11 +1625,14 @@ static void HoughCirclesGradient(InputArray _image, OutputArray _circles, float 
 
     std::vector<int> centers;
 
-    // 4 rows when multithreaded because there is a bit overhead
-    // and on the other side there are some row ranges where centers are concentrated
-    parallel_for_(Range(1, accum.rows - 1),
-                  HoughCirclesFindCentersInvoker(accum, centers, accThreshold, mtx),
-                  (numThreads > 1) ? ((accum.rows - 2) / 4) : 1);
+//    // 4 rows when multithreaded because there is a bit overhead
+//    // and on the other side there are some row ranges where centers are concentrated
+//    parallel_for_(Range(1, accum.rows - 1),
+//                  HoughCirclesFindCentersInvoker(accum, centers, accThreshold, mtx),
+//                  (numThreads > 1) ? ((accum.rows - 2) / 4) : 1);
+
+    HoughCirclesFindCentersInvoker invoker(accum, centers, accThreshold, mtx);
+    invoker(Range(1, accum.rows - 1));
 
     int centerCnt = (int)centers.size();
     if(centerCnt == 0)
@@ -1707,7 +1715,7 @@ static void HoughCircles( InputArray _image, OutputArray _circles,
                           double param1, double param2,
                           int minRadius, int maxRadius,
                           int maxCircles, double param3,
-                          Mat edgeSource, bool returnSupports)
+                          Mat edges, Mat dx, Mat dy, bool returnSupports)
 {
     CV_INSTRUMENT_REGION()
 
@@ -1737,7 +1745,7 @@ static void HoughCircles( InputArray _image, OutputArray _circles,
         HoughCirclesGradient(_image, _circles, (float)dp, (float)minDist,
                              minRadius, maxRadius, cannyThresh,
                              accThresh, maxCircles, kernelSize, centersOnly,
-                             edgeSource, returnSupports);
+                             edges, dx, dy, returnSupports);
         break;
     default:
         CV_Error( Error::StsBadArg, "Unrecognized method id. Actually only CV_HOUGH_GRADIENT is supported." );
@@ -1748,10 +1756,10 @@ void HoughCircles( InputArray _image, OutputArray _circles,
                    int method, double dp, double minDist,
                    double param1, double param2,
                    int minRadius, int maxRadius,
-                   Mat edgeSource, bool returnSupports)
+                   Mat edges, Mat dx, Mat dy, bool returnSupports)
 {
     HoughCircles(_image, _circles, method, dp, minDist, param1, param2, minRadius, maxRadius, -1, 3,
-                 edgeSource, returnSupports);
+                 edges, dx, dy, returnSupports);
 }
 } // \namespace cv
 
@@ -1907,7 +1915,7 @@ cvHoughCircles( CvArr* src_image, void* circle_storage,
     }
 
     cv::HoughCircles(src, circles_mat, method, dp, min_dist, param1, param2, min_radius, max_radius, circles_max, 3,
-                     cv::Mat(), false);
+                     cv::Mat(), cv::Mat(), cv::Mat(), false);
     cvSeqPushMulti(circles, circles_mat.data, (int)circles_mat.total());
     return circles;
 }
