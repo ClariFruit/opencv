@@ -4,6 +4,7 @@
  */
 #include <string>
 #include <sstream>
+#include <iostream>
 #include "opencv2/imgcodecs.hpp"
 #include "opencv2/highgui.hpp"
 #include "opencv2/imgproc.hpp"
@@ -21,70 +22,25 @@ std::string ToString(T val)
 
 int main(int argc, char** argv)
 {
-    //![load]
-    const char* filename = argc >=2 ? argv[1] : "../data/smarties.png";
-
-    // Loads an image
-    Mat src = imread( filename, IMREAD_COLOR );
-
-    // Check if image is loaded fine
-    if(src.empty()){
-        printf(" Error opening image\n");
-        printf(" Program Arguments: [image_name -- default %s] \n", filename);
-        return -1;
-    }
-    //![load]
-
-    //![convert_to_gray]
-    Mat gray;
-    cvtColor(src, gray, COLOR_BGR2GRAY);
-    //![convert_to_gray]
-
-    //![reduce_noise]
-    medianBlur(gray, gray, 5);
-    //![reduce_noise]
-
-    //![custom edges]
-    Mat edges, dx, dy;
-    int kernelSize = 1;
-    int cannyThreshold = 50;
-    Sobel(gray, dx, CV_16S, 1, 0, kernelSize, 1, 0, BORDER_REPLICATE);
-    Sobel(gray, dy, CV_16S, 0, 1, kernelSize, 1, 0, BORDER_REPLICATE);
-    Canny(dx, dy, edges, std::max(1, cannyThreshold / 2), cannyThreshold, false);
-    //![custom edges]
+    Mat img = Mat(100, 100, CV_8U, Scalar(0));
+    circle(img, Point(30, 30), 20, Scalar(200));
+    circle(img, Point(70, 70), 20, Scalar(100));
 
     bool returnSupports = true;
 
     //![houghcircles]
     vector<Vec4f> circles;
-    HoughCircles(gray, circles, HOUGH_GRADIENT, 1,
-                 gray.rows/16,  // change this value to detect circles with different distances to each other
-                 100, 30, 1, 30, // change min_radius & max_radius to detect larger circles
-                 edges, dx, dy, // custom edges and gradients
+    HoughCircles(img, circles, HOUGH_GRADIENT, 1,
+                 img.rows/16,  // change this value to detect circles with different distances to each other
+                 100, 1, 1, 30, // change min_radius & max_radius to detect larger circles
+                 img, // custom edges
                  returnSupports
     );
     //![houghcircles]
 
-    //![draw]
-    for( size_t i = 0; i < circles.size(); i++ )
-    {
-        Vec4f c = circles[i];
-        Point center = Point(c[0], c[1]);
-        // circle center
-        circle( src, center, 1, Scalar(0,100,100), 3, LINE_AA);
-        // circle outline
-        int radius = c[2];
-        circle( src, center, radius, Scalar(255,0,255), 3, LINE_AA);
-
-        size_t support = c[3];
-        cv::putText( src, ToString(support), center, FONT_HERSHEY_SIMPLEX, 0.8, Scalar(0,255,255), 2 );
+    for(int i = 0; i < 2; i++) {
+        std::cout << circles[i] << std::endl;
     }
-    //![draw]
-
-    //![display]
-    imshow("detected circles", src);
-    waitKey();
-    //![display]
 
     return 0;
 }
